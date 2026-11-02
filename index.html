@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>李庭緯SDGs性別平權-互動網頁遊戲</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- html2canvas 用於下載證書圖片 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap');
+    
+    body {
+      font-family: 'Zen Maru Gothic', system-ui, -apple-system, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      overflow: hidden;
+    }
+
+    /* 花朵跳動與浮動效果 */
+    .flower-item {
+      cursor: pointer;
+      filter: drop-shadow(0 8px 10px rgba(0,0,0,0.25));
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.3s ease;
+      animation: flowerBounce 3s ease-in-out infinite;
+    }
+    .flower-item:hover {
+      transform: scale(1.25) rotate(8deg);
+      filter: drop-shadow(0 12px 16px rgba(255, 215, 0, 0.8));
+    }
+    .flower-item.completed {
+      filter: grayscale(0.6) opacity(0.7);
+      animation: none;
+    }
+
+    @keyframes flowerBounce {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-12px) rotate(4deg); }
+    }
+
+    /* 雲朵飄動動畫 */
+    @keyframes cloudMove {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(110vw); }
+    }
+    .animate-cloud-slow { animation: cloudMove 55s linear infinite; }
+    .animate-cloud-fast { animation: cloudMove 38s linear infinite; }
+
+    /* 拖曳與放鬆框 */
+    .draggable-card {
+      touch-action: none;
+      cursor: grab;
+      transition: all 0.2s ease;
+    }
+    .draggable-card:active {
+      cursor: grabbing;
+      transform: scale(1.03);
+    }
+    .drop-zone {
+      transition: all 0.3s ease;
+    }
+    .drop-zone.drag-over {
+      background-color: rgba(254, 240, 138, 0.5);
+      border-color: #f59e0b;
+      transform: scale(1.02);
+    }
+
+    /* 模態框背景模糊 */
+    .modal-backdrop {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(8px);
+    }
+
+    /* 證書樣式與邊框 */
+    .certificate-border {
+      border: 12px solid #3b82f6;
+      outline: 4px dashed #fbbf24;
+      outline-offset: -8px;
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen bg-sky-200 overflow-hidden flex flex-col justify-between">
+
+  <!-- ==========================================
+       音效控制與頂部標題列 (Top Bar)
+       ========================================== -->
+  <header class="relative z-20 w-full px-4 md:px-8 py-3 flex justify-between items-center bg-white/90 backdrop-blur-md border-b-4 border-amber-300 shadow-lg">
+    <!-- 左上角標題 -->
+    <div class="flex items-center space-x-3">
+      <div class="bg-gradient-to-r from-pink-500 to-purple-600 text-white p-2.5 rounded-2xl shadow-md">
+        <i class="fa-solid fa-hands-holding-child text-2xl"></i>
+      </div>
+      <div>
+        <h1 class="text-lg md:text-2xl font-black text-slate-800 tracking-wide">
+          李庭緯SDGs性別平權-情境題
+        </h1>
+        <p class="text-xs text-slate-500 font-bold">SDG 5 性別平等 Gender Equality</p>
+      </div>
+    </div>
+
+    <!-- 右上角計分板與音效開關 -->
+    <div class="flex items-center space-x-3">
+      <div id="scoreDisplay" class="bg-amber-100 border-2 border-amber-400 px-4 py-1.5 rounded-full shadow-inner flex items-center space-x-2">
+        <i class="fa-solid fa-star text-amber-500 text-lg animate-bounce"></i>
+        <span class="text-slate-700 font-bold text-xs md:text-base">答對題數：</span>
+        <span id="scoreText" class="text-xl md:text-2xl font-black text-emerald-600">0</span>
+        <span class="text-slate-500 font-bold text-sm md:text-lg">/ 10</span>
+      </div>
+
+      <button id="soundToggleBtn" onclick="toggleSound()" class="w-10 h-10 rounded-full bg-slate-100 border-2 border-slate-300 flex items-center justify-center text-slate-700 hover:bg-slate-200 transition">
+        <i id="soundIcon" class="fa-solid fa-volume-high text-lg"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- ==========================================
+       遊戲場景 (遊樂園 Canvas + 雲朵 + 花朵草原)
+       ========================================== -->
+  <main class="relative z-10 flex-1 w-full overflow-hidden">
+    <!-- 天空背景雲朵 -->
+    <div class="absolute top-6 left-0 opacity-80 animate-cloud-slow pointer-events-none">
+      <i class="fa-solid fa-cloud text-white text-6xl opacity-90"></i>
+    </div>
+    <div class="absolute top-12 left-1/3 opacity-70 animate-cloud-fast pointer-events-none">
+      <i class="fa-solid fa-cloud text-white text-5xl"></i>
+    </div>
+
+    <!-- 背景畫布 Canvas (繪製摩天輪、旋轉木馬與大草原) -->
+    <canvas id="parkCanvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+
+    <!-- 花朵容器 (動態放置5朵花) -->
+    <div id="flowersContainer" class="relative w-full h-full z-10"></div>
+  </main>
+
+  <!-- ==========================================
+       關卡一 / 遊戲說明彈窗 (初始顯示)
+       ========================================== -->
+  <div id="instructionModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
+    <div class="bg-white rounded-3xl shadow-2xl border-4 border-amber-400 w-full max-w-xl p-6 md:p-8 relative animate-in fade-in zoom-in duration-300">
+      <div class="text-center mb-5">
+        <div class="inline-block bg-amber-100 text-amber-800 text-xs font-black px-4 py-1 rounded-full mb-2">
+          第一關：遊戲導覽
+        </div>
+        <h2 class="text-2xl md:text-3xl font-black text-slate-800 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-gamepad text-amber-500"></i> 遊戲說明與規則
+        </h2>
+      </div>
+
+      <div class="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 md:p-5 text-slate-700 text-sm md:text-base leading-relaxed space-y-2 mb-6">
+        <p class="font-bold text-indigo-600 flex items-center gap-2">
+          <i class="fa-solid fa-seedling"></i> 請點選畫面中的花朵，每組花朵會搭配 1 個題組。
+        </p>
+        <p class="font-bold text-indigo-600 flex items-center gap-2">
+          <i class="fa-solid fa-shapes"></i> 每個題組都有 2 個觀念，請將行為或語句拖進「性別平等 / 不平等」兩邊的框中。
+        </p>
+        <p><i class="fa-solid fa-circle-dot text-amber-500"></i> 結局會依答對題數給予不同等級的結果，例如：再加油、進步中、平權達人。</p>
+        <p><i class="fa-solid fa-circle-dot text-amber-500"></i> 全部 5 組做答結束，會得到對應的挑戰級別。</p>
+        <hr class="my-2 border-slate-300">
+        <p class="text-slate-800 font-bold"><i class="fa-solid fa-hand-point-right text-rose-500"></i> 如果等級是「再加油」、「進步中」，會出現「再次挑戰」按鈕，請重新挑戰。</p>
+        <p class="text-slate-800 font-bold"><i class="fa-solid fa-hand-point-right text-emerald-500"></i> 如果等級是平權達人 (答對8題以上)，會出現「下載學習證書」按鈕，可以製作個人的過關證書喔！</p>
+        <div class="bg-amber-100 border border-amber-300 p-2.5 rounded-xl text-xs font-black text-amber-900 mt-2">
+          🏆 挑戰結果對應級別：0-3題為「再加油」、4-7題為「進步中」、8-10題為「平權達人」。
+        </div>
+      </div>
+
+      <!-- 置中開始遊戲按鈕 -->
+      <div class="flex justify-center">
+        <button onclick="startGame()" class="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xl px-10 py-3.5 rounded-full shadow-xl hover:shadow-2xl transition transform hover:scale-105 active:scale-95 border-2 border-white flex items-center gap-3">
+          <i class="fa-solid fa-circle-play text-2xl"></i>
+          <span>開始遊戲</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       第二關 / 情境題拖曳分類彈窗
+       ========================================== -->
+  <div id="quizModal" class="fixed inset-0 z-40 hidden flex items-center justify-center p-4 modal-backdrop">
+    <div class="bg-white rounded-3xl shadow-2xl border-4 border-indigo-300 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in duration-200">
+      
+      <!-- Modal 頁首 -->
+      <div class="bg-gradient-to-r from-indigo-500 to-purple-600 px-6 py-4 text-white flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+          <span id="quizGroupBadge" class="bg-amber-400 text-purple-950 px-3 py-1 rounded-full text-xs font-black">題組 1</span>
+          <h2 class="text-base md:text-xl font-black">請將觀念拖曳分類至正確對應區域</h2>
+        </div>
+        <button onclick="closeQuizModal()" class="text-white/80 hover:text-white text-2xl font-bold">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Modal 內容 -->
+      <div class="p-4 md:p-6 flex-1 overflow-y-auto flex flex-col gap-5">
+        
+        <!-- 待分類卡片 -->
+        <div class="bg-slate-100 p-4 rounded-2xl border-2 border-slate-200">
+          <h3 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1">
+            <i class="fa-solid fa-hand-pointer"></i> 待分類語句 (滑鼠拖曳或點選按鈕)
+          </h3>
+          <div id="questionsPool" class="grid grid-cols-1 md:grid-cols-2 gap-3 min-h-[80px]"></div>
+        </div>
+
+        <!-- 放置區域 (Drop Zones) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+          <!-- 性別平等 -->
+          <div id="zone-equal" data-type="equal" 
+               ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)"
+               class="drop-zone bg-emerald-50 border-3 border-dashed border-emerald-400 rounded-2xl p-4 flex flex-col min-h-[160px]">
+            <div class="flex items-center space-x-2 text-emerald-700 font-black text-lg mb-2 pb-2 border-b border-emerald-200">
+              <i class="fa-solid fa-scale-balanced text-2xl"></i>
+              <span>性別平等 (Gender Equality)</span>
+            </div>
+            <div id="items-equal" class="flex-1 space-y-2"></div>
+          </div>
+
+          <!-- 性別不平等 -->
+          <div id="zone-unequal" data-type="unequal" 
+               ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)"
+               class="drop-zone bg-rose-50 border-3 border-dashed border-rose-400 rounded-2xl p-4 flex flex-col min-h-[160px]">
+            <div class="flex items-center space-x-2 text-rose-700 font-black text-lg mb-2 pb-2 border-b border-rose-200">
+              <i class="fa-solid fa-hand-shapes text-2xl"></i>
+              <span>性別不平等 (Gender Inequality)</span>
+            </div>
+            <div id="items-unequal" class="flex-1 space-y-2"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal 底部提交按鈕 -->
+      <div class="bg-slate-100 px-6 py-3 border-t border-slate-200 flex justify-end">
+        <button onclick="submitCurrentSet()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-black px-6 py-2.5 rounded-xl shadow-lg transition active:scale-95 flex items-center space-x-2">
+          <i class="fa-solid fa-circle-check"></i>
+          <span>完成本組提交</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==========================================
+       答題結果結算 Modal
+       ========================================== -->
+  <div id="resultModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop">
+    <div class="bg-white rounded-3xl shadow-2xl border-4 border-amber-300 w-full max-w-md p-6 text-center animate-in zoom-in duration-300 relative">
+      
+      <!-- 獎牌圖示 -->
+      <div id="resultBadge" class="w-24 h-24 mx-auto -mt-16 bg-gradient-to-tr from-amber-400 to-yellow-300 rounded-full flex items-center justify-center border-4 border-white shadow-xl text-4xl text-white">
+        <i class="fa-solid fa-trophy"></i>
+      </div>
+
+      <h2 class="text-2xl font-black text-slate-800 mt-4">測驗結束！</h2>
+      <p class="text-slate-500 text-xs mt-1">李庭緯SDGs性別平權情境挑戰成績</p>
+
+      <!-- 等級顯示 -->
+      <div class="my-5 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+        <div class="text-xs font-bold text-slate-400">獲得等級結果</div>
+        <div id="resultRankText" class="text-3xl font-black text-indigo-600 mt-1">平權達人</div>
+        <div class="text-sm font-bold text-slate-600 mt-2">
+          答對題數：<span id="resultScoreText" class="text-emerald-600 text-xl font-black">0</span> / 10
+        </div>
+      </div>
+
+      <p id="resultDescText" class="text-slate-600 text-sm mb-6 leading-relaxed"></p>
+
+      <!-- 按鈕放置區（突顯白色區塊） -->
+      <div class="bg-slate-100 p-4 rounded-2xl border border-slate-200 shadow-inner flex justify-center">
+        <div id="resultActionContainer" class="w-full"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       第三頁 / certificate.html (學習證書檢視與下載 Modal)
+       ========================================== -->
+  <div id="certificateModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop">
+    <div class="bg-white rounded-3xl shadow-2xl border-4 border-blue-400 w-full max-w-3xl max-h-[95vh] flex flex-col overflow-hidden animate-in zoom-in duration-300">
+      
+      <div class="bg-gradient-to-r from-blue-600 to-indigo-700 px-6 py-3 text-white flex justify-between items-center">
+        <h2 class="text-lg font-black flex items-center gap-2">
+          <i class="fa-solid fa-certificate"></i> SDG 5 性別平權學習證書
+        </h2>
+        <button onclick="closeCertificateModal()" class="text-white/80 hover:text-white text-2xl font-bold">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="p-4 md:p-6 flex-1 overflow-y-auto flex flex-col items-center">
+        <!-- 姓名輸入框 -->
+        <div class="w-full max-w-md mb-4 flex items-center gap-2 bg-blue-50 p-3 rounded-xl border border-blue-200">
+          <label for="userNameInput" class="text-xs md:text-sm font-black text-slate-700 whitespace-nowrap">學員姓名：</label>
+          <input type="text" id="userNameInput" value="李庭緯" oninput="updateCertificateName()" 
+                 class="w-full px-3 py-1.5 rounded-lg border border-slate-300 font-bold text-slate-800 text-sm focus:outline-none focus:border-blue-500">
+        </div>
+
+        <!-- 證書本體區域 (用於圖片下載與列印) -->
+        <div id="certificateArea" class="certificate-border bg-white p-6 md:p-10 rounded-2xl shadow-xl w-full max-w-2xl text-center relative overflow-hidden my-2">
+          <!-- 水印圖案 -->
+          <div class="absolute inset-0 opacity-5 flex items-center justify-center pointer-events-none">
+            <i class="fa-solid fa-scale-balanced text-[200px]"></i>
+          </div>
+
+          <div class="text-blue-600 font-black text-xs md:text-sm tracking-widest uppercase mb-1">Sustainable Development Goals</div>
+          <h1 class="text-2xl md:text-4xl font-black text-slate-800 tracking-wide mb-2">性別平權學習證書</h1>
+          <div class="w-20 h-1 bg-amber-400 mx-auto mb-6 rounded-full"></div>
+
+          <p class="text-slate-600 text-xs md:text-sm mb-4">茲證明學員</p>
+          <h2 id="certNameText" class="text-2xl md:text-3xl font-black text-indigo-700 underline decoration-amber-400 decoration-4 underline-offset-8 my-2">李庭緯</h2>
+          <p class="text-slate-600 text-xs md:text-sm leading-relaxed mt-4 max-w-lg mx-auto">
+            順利完成「SDGs 性別平權-情境題」多項測驗考驗，展現出極佳的平權觀念與尊重素養，特頒發此證書以資鼓勵！
+          </p>
+
+          <div class="my-6 inline-block bg-amber-50 border-2 border-amber-300 px-6 py-2 rounded-full shadow-sm">
+            <span class="text-slate-600 font-bold text-xs md:text-sm">榮獲等級：</span>
+            <span class="text-amber-600 font-black text-base md:text-xl">🏆 平權達人</span>
+          </div>
+
+          <div class="mt-4 pt-4 border-t border-slate-200 flex justify-between items-end text-xs text-slate-500">
+            <div class="text-left">
+              <p class="font-bold text-slate-700">核發單位：SDGs性別平權推廣組</p>
+              <p id="certDateText">核發日期：2026 年 11 月 02 日</p>
+            </div>
+            <div class="w-16 h-16 bg-blue-600 text-white rounded-full flex items-center justify-center font-black text-xs shadow-md border-2 border-white">
+              SDG 5
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部按鈕區 -->
+      <div class="bg-slate-100 px-6 py-3 border-t border-slate-200 flex justify-center gap-4">
+        <button onclick="downloadCertificate()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-6 py-2.5 rounded-xl shadow-lg transition active:scale-95 flex items-center gap-2 text-sm">
+          <i class="fa-solid fa-download"></i>
+          <span>下載證書圖片 (JPG)</span>
+        </button>
+        <button onclick="printCertificate()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-black px-6 py-2.5 rounded-xl shadow-lg transition active:scale-95 flex items-center gap-2 text-sm">
+          <i class="fa-solid fa-print"></i>
+          <span>列印/儲存 PDF</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==========================================
+       JavaScript 遊戲主邏輯
+       ========================================== -->
+  <script>
+    /* 1. 遊戲題目資料 (5組花朵，每組2題，共10題) */
+    const questionSets = [
+      {
+        id: 1,
+        color: '#ec4899',
+        questions: [
+          { id: 'q1', text: '不論性別，家事應由全家人共同分擔與合作。', type: 'equal' },
+          { id: 'q2', text: '認為男生不應該哭泣，哭泣代表懦弱。', type: 'unequal' }
+        ]
+      },
+      {
+        id: 2,
+        color: '#a855f7',
+        questions: [
+          { id: 'q3', text: '選拔班長或幹部時，以能力為重而不分男女。', type: 'equal' },
+          { id: 'q4', text: '強迫特定性別的同學只能玩某種固定玩具。', type: 'unequal' }
+        ]
+      },
+      {
+        id: 3,
+        color: '#f59e0b',
+        questions: [
+          { id: 'q5', text: '尊重每個人的穿著風格與顏色喜好。', type: 'equal' },
+          { id: 'q6', text: '認為某些職場職位只適合男性或女性擔任。', type: 'unequal' }
+        ]
+      },
+      {
+        id: 4,
+        color: '#3b82f6',
+        questions: [
+          { id: 'q7', text: '不論男女都擁有相同的職涯升遷機會。', type: 'equal' },
+          { id: 'q8', text: '照顧嬰兒是媽媽的責任，爸爸不用幫忙。', type: 'unequal' }
+        ]
+      },
+      {
+        id: 5,
+        color: '#10b981',
+        questions: [
+          { id: 'q9', text: '勇敢表達情緒與性別無關。', type: 'equal' },
+          { id: 'q10', text: '認為男生的薪水天生就應該比女生高。', type: 'unequal' }
+        ]
+      }
+    ];
+
+    // 全域變數
+    let currentSetIndex = null;
+    let completedSets = new Set();
+    let userAnswers = {}; // { q1: 'equal', ... }
+    let totalScore = 0;
+    let draggedCardId = null;
+
+    // 音效控制 (Web Audio API)
+    let audioCtx = null;
+    let isSoundOn = true;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        startBGM();
+      }
+    }
+
+    function playTone(freq, type, duration) {
+      if (!isSoundOn || !audioCtx) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    function startBGM() {
+      const notes = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63];
+      let idx = 0;
+      setInterval(() => {
+        if (isSoundOn && audioCtx) {
+          playTone(notes[idx], 'triangle', 0.25);
+          idx = (idx + 1) % notes.length;
+        }
+      }, 700);
+    }
+
+    function toggleSound() {
+      isSoundOn = !isSoundOn;
+      const icon = document.getElementById('soundIcon');
+      if (isSoundOn) {
+        icon.className = 'fa-solid fa-volume-high text-lg text-slate-700';
+      } else {
+        icon.className = 'fa-solid fa-volume-xmark text-lg text-rose-500';
+      }
+    }
+
+    /* 2. 背景遊樂園與大草原 Canvas 繪製 */
+    const canvas = document.getElementById('parkCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      drawParkScene();
+    }
+
+    function drawParkScene() {
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // 天空與遠景
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, h * 0.45);
+      skyGrad.addColorStop(0, '#bae6fd');
+      skyGrad.addColorStop(1, '#e0f2fe');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, w, h * 0.45);
+
+      // 遠處遊樂設施剪影
+      drawFerrisWheel(w * 0.15, h * 0.32, 45);
+      drawCarousel(w * 0.82, h * 0.35);
+
+      // 前景大草原 (佔下半部較大區塊)
+      const meadowGrad = ctx.createLinearGradient(0, h * 0.42, 0, h);
+      meadowGrad.addColorStop(0, '#4ade80');
+      meadowGrad.addColorStop(0.4, '#22c55e');
+      meadowGrad.addColorStop(1, '#15803d');
+
+      ctx.fillStyle = meadowGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, h * 0.42);
+      ctx.quadraticCurveTo(w * 0.5, h * 0.38, w, h * 0.44);
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawFerrisWheel(cx, cy, r) {
+      ctx.save();
+      ctx.strokeStyle = '#f43f5e';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+
+      for (let i = 0; i < 8; i++) {
+        const angle = (i * Math.PI) / 4;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+        ctx.stroke();
+
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.strokeStyle = '#e11d48';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy); ctx.lineTo(cx - 20, cy + r + 20);
+      ctx.moveTo(cx, cy); ctx.lineTo(cx + 20, cy + r + 20);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawCarousel(x, y) {
+      ctx.save();
+      ctx.fillStyle = '#a855f7';
+      ctx.beginPath();
+      ctx.moveTo(x - 30, y + 10); ctx.lineTo(x, y - 15); ctx.lineTo(x + 30, y + 10);
+      ctx.fill();
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(x - 25, y + 10, 50, 18);
+      ctx.restore();
+    }
+
+    /* 3. 隨機放置 5 朵花朵於草原 */
+    function spawnFlowers() {
+      const container = document.getElementById('flowersContainer');
+      container.innerHTML = '';
+
+      // 5 個草原區域分佈
+      const zones = [
+        { minX: 8, maxX: 22, minY: 55, maxY: 72 },
+        { minX: 26, maxX: 40, minY: 65, maxY: 82 },
+        { minX: 44, maxX: 58, minY: 52, maxY: 70 },
+        { minX: 62, maxX: 76, minY: 66, maxY: 83 },
+        { minX: 80, maxX: 90, minY: 55, maxY: 72 }
+      ];
+
+      questionSets.forEach((set, index) => {
+        const zone = zones[index];
+        const randomX = Math.floor(Math.random() * (zone.maxX - zone.minX + 1)) + zone.minX;
+        const randomY = Math.floor(Math.random() * (zone.maxY - zone.minY + 1)) + zone.minY;
+
+        const flowerEl = document.createElement('div');
+        flowerEl.className = 'flower-item absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group';
+        flowerEl.style.left = `${randomX}%`;
+        flowerEl.style.top = `${randomY}%`;
+        flowerEl.setAttribute('onclick', `openQuizModal(${index})`);
+
+        flowerEl.innerHTML = `
+          <div class="relative w-16 h-16 md:w-20 md:h-20">
+            <svg viewBox="0 0 100 100" class="w-full h-full">
+              <path d="M50 60 Q 45 80 50 95" stroke="#15803d" stroke-width="6" fill="none" stroke-linecap="round" />
+              <g fill="${set.color}">
+                <circle cx="50" cy="25" r="16" />
+                <circle cx="75" cy="50" r="16" />
+                <circle cx="50" cy="75" r="16" />
+                <circle cx="25" cy="50" r="16" />
+                <circle cx="68" cy="32" r="16" />
+                <circle cx="68" cy="68" r="16" />
+                <circle cx="32" cy="68" r="16" />
+                <circle cx="32" cy="32" r="16" />
+              </g>
+              <circle cx="50" cy="50" r="18" fill="#facc15" stroke="#eab308" stroke-width="3" />
+            </svg>
+            <div id="flower-badge-${index}" class="absolute -top-1 -right-1 bg-white text-slate-800 text-[10px] font-black px-1.5 py-0.5 rounded-full border border-slate-300 shadow">
+              花朵 ${index + 1}
+            </div>
+          </div>
+          <span class="mt-1 bg-white/95 text-slate-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow border border-amber-300 group-hover:bg-yellow-300 transition">
+            點擊答題
+          </span>
+        `;
+        container.appendChild(flowerEl);
+      });
+    }
+
+    /* 4. 開啟遊戲與模態框邏輯 */
+    function startGame() {
+      initAudio();
+      document.getElementById('instructionModal').classList.add('hidden');
+      playTone(523.25, 'sine', 0.2);
+    }
+
+    function openQuizModal(index) {
+      currentSetIndex = index;
+      const set = questionSets[index];
+      document.getElementById('quizGroupBadge').innerText = `題組 ${index + 1}`;
+
+      const pool = document.getElementById('questionsPool');
+      const equalZone = document.getElementById('items-equal');
+      const unequalZone = document.getElementById('items-unequal');
+
+      pool.innerHTML = '';
+      equalZone.innerHTML = '';
+      unequalZone.innerHTML = '';
+
+      set.questions.forEach(q => {
+        const currentAns = userAnswers[q.id];
+        const card = createQuestionCard(q);
+
+        if (!currentAns) {
+          pool.appendChild(card);
+        } else if (currentAns === 'equal') {
+          equalZone.appendChild(card);
+        } else if (currentAns === 'unequal') {
+          unequalZone.appendChild(card);
+        }
+      });
+
+      document.getElementById('quizModal').classList.remove('hidden');
+      playTone(440, 'sine', 0.15);
+    }
+
+    function closeQuizModal() {
+      document.getElementById('quizModal').classList.add('hidden');
+    }
+
+    function createQuestionCard(q) {
+      const card = document.createElement('div');
+      card.id = `card-${q.id}`;
+      card.className = 'draggable-card bg-white p-3 rounded-xl shadow border border-indigo-200 text-slate-800 font-bold text-xs md:text-sm flex items-center justify-between gap-2';
+      card.draggable = true;
+      card.setAttribute('ondragstart', 'handleDragStart(event)');
+
+      card.innerHTML = `
+        <span class="flex-1">${q.text}</span>
+        <div class="flex items-center space-x-1 shrink-0">
+          <button onclick="quickMove('${q.id}', 'equal')" class="text-xs bg-emerald-100 text-emerald-800 hover:bg-emerald-200 px-2 py-1 rounded-lg transition" title="移至平等">
+            平等
+          </button>
+          <button onclick="quickMove('${q.id}', 'unequal')" class="text-xs bg-rose-100 text-rose-800 hover:bg-rose-200 px-2 py-1 rounded-lg transition" title="移至不平等">
+            不平等
+          </button>
+        </div>
+      `;
+      return card;
+    }
+
+    function quickMove(qId, targetZone) {
+      const card = document.getElementById(`card-${qId}`);
+      if (!card) return;
+      userAnswers[qId] = targetZone;
+      document.getElementById(`items-${targetZone}`).appendChild(card);
+      playTone(659.25, 'sine', 0.1);
+    }
+
+    function handleDragStart(e) {
+      draggedCardId = e.target.id;
+      e.dataTransfer.setData('text/plain', e.target.id);
+    }
+
+    function handleDragOver(e) {
+      e.preventDefault();
+      e.currentTarget.classList.add('drag-over');
+    }
+
+    function handleDragLeave(e) {
+      e.currentTarget.classList.remove('drag-over');
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      const dropZone = e.currentTarget;
+      dropZone.classList.remove('drag-over');
+
+      const cardId = e.dataTransfer.getData('text/plain') || draggedCardId;
+      const card = document.getElementById(cardId);
+      if (!card) return;
+
+      const targetType = dropZone.getAttribute('data-type');
+      const qId = cardId.replace('card-', '');
+
+      userAnswers[qId] = targetType;
+      document.getElementById(`items-${targetType}`).appendChild(card);
+      playTone(659.25, 'sine', 0.1);
+    }
+
+    /* 5. 提交本組與計算得分 */
+    function submitCurrentSet() {
+      const set = questionSets[currentSetIndex];
+      let hasUnanswered = false;
+
+      set.questions.forEach(q => {
+        if (!userAnswers[q.id]) hasUnanswered = true;
+      });
+
+      if (hasUnanswered) {
+        alert('本題組還有觀念語句尚未分類喔！請拖曳或點選按鈕放入分類框。');
+        return;
+      }
+
+      completedSets.add(currentSetIndex);
+
+      // 更新花朵標籤狀態
+      const badge = document.getElementById(`flower-badge-${currentSetIndex}`);
+      if (badge) {
+        badge.className = 'absolute -top-1 -right-1 bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shadow';
+        badge.innerHTML = '<i class="fa-solid fa-check"></i>';
+      }
+
+      updateScore();
+      closeQuizModal();
+
+      // 完成全數 5 組考驗
+      if (completedSets.size === questionSets.length) {
+        setTimeout(showFinalResult, 400);
+      }
+    }
+
+    function updateScore() {
+      totalScore = 0;
+      questionSets.forEach(set => {
+        set.questions.forEach(q => {
+          if (userAnswers[q.id] === q.type) totalScore++;
+        });
+      });
+      document.getElementById('scoreText').innerText = totalScore;
+    }
+
+    /* 6. 結局判定與證書下載介面整合 */
+    function showFinalResult() {
+      const resultModal = document.getElementById('resultModal');
+      const rankText = document.getElementById('resultRankText');
+      const scoreText = document.getElementById('resultScoreText');
+      const descText = document.getElementById('resultDescText');
+      const actionBox = document.getElementById('resultActionContainer');
+      const badge = document.getElementById('resultBadge');
+
+      scoreText.innerText = totalScore;
+      resultModal.classList.remove('hidden');
+
+      if (totalScore <= 3) {
+        // 再加油 (0-3題)
+        rankText.innerText = '再加油';
+        rankText.className = 'text-3xl font-black text-rose-600 mt-1';
+        descText.innerText = '觀念還不夠熟悉喔！請再複習一下性別平權與尊重的原則，重新挑戰一次吧！';
+        badge.className = 'w-24 h-24 mx-auto -mt-16 bg-gradient-to-tr from-slate-400 to-rose-400 rounded-full flex items-center justify-center border-4 border-white shadow-xl text-4xl text-white';
+        badge.innerHTML = '<i class="fa-solid fa-rotate-right"></i>';
+
+        actionBox.innerHTML = `
+          <button onclick="location.reload()" class="w-full bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white font-black py-3 px-8 rounded-full shadow-lg transition active:scale-95 flex items-center justify-center space-x-2 text-base">
+            <i class="fa-solid fa-arrow-rotate-right"></i>
+            <span>再次挑戰</span>
+          </button>
+        `;
+      } else if (totalScore <= 7) {
+        // 進步中 (4-7題)
+        rankText.innerText = '進步中';
+        rankText.className = 'text-3xl font-black text-amber-600 mt-1';
+        descText.innerText = '表現得相當不錯！已經掌握大部分性別平權觀念囉，再接再厲拿下滿分！';
+        badge.className = 'w-24 h-24 mx-auto -mt-16 bg-gradient-to-tr from-amber-400 to-yellow-500 rounded-full flex items-center justify-center border-4 border-white shadow-xl text-4xl text-white';
+        badge.innerHTML = '<i class="fa-solid fa-seedling"></i>';
+
+        actionBox.innerHTML = `
+          <button onclick="location.reload()" class="w-full bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-white font-black py-3 px-8 rounded-full shadow-lg transition active:scale-95 flex items-center justify-center space-x-2 text-base">
+            <i class="fa-solid fa-arrow-rotate-right"></i>
+            <span>再次挑戰</span>
+          </button>
+        `;
+      } else {
+        // 平權達人 (8-10題)
+        rankText.innerText = '平權達人';
+        rankText.className = 'text-3xl font-black text-emerald-600 mt-1';
+        descText.innerText = '太優秀了！你完全具備正確的 SDG 5 性別平權意識，順利通關並解鎖過關學習證書！';
+        badge.className = 'w-24 h-24 mx-auto -mt-16 bg-gradient-to-tr from-amber-300 via-yellow-400 to-emerald-400 rounded-full flex items-center justify-center border-4 border-white shadow-xl text-4xl text-white';
+        badge.innerHTML = '<i class="fa-solid fa-award animate-bounce"></i>';
+
+        // 突顯白色區塊內的下載證書按鈕 (連結至 certificate.html 模態框)
+        actionBox.innerHTML = `
+          <button onclick="openCertificateModal()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black py-3.5 px-6 rounded-full shadow-xl transition transform hover:scale-105 active:scale-95 flex items-center justify-center space-x-2 text-base border-2 border-white">
+            <i class="fa-solid fa-file-certificate text-xl"></i>
+            <span>下載學習證書</span>
+          </button>
+        `;
+      }
+    }
+
+    /* 7. 第三頁 證書模態框 (certificate.html 核心功能) */
+    function openCertificateModal() {
+      document.getElementById('resultModal').classList.add('hidden');
+      document.getElementById('certificateModal').classList.remove('hidden');
+      updateCertificateDate();
+    }
+
+    function closeCertificateModal() {
+      document.getElementById('certificateModal').classList.add('hidden');
+    }
+
+    function updateCertificateName() {
+      const nameInput = document.getElementById('userNameInput').value.trim();
+      document.getElementById('certNameText').innerText = nameInput || '李庭緯';
+    }
+
+    function updateCertificateDate() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const date = String(now.getDate()).padStart(2, '0');
+      document.getElementById('certDateText').innerText = `核發日期：${year} 年 ${month} 月 ${date} 日`;
+    }
+
+    function downloadCertificate() {
+      const certElement = document.getElementById('certificateArea');
+      html2canvas(certElement, { scale: 2 }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `${document.getElementById('certNameText').innerText}_SDGs性別平權學習證書.jpg`;
+        link.href = canvas.toDataURL('image/jpeg', 0.9);
+        link.click();
+      });
+    }
+
+    function printCertificate() {
+      window.print();
+    }
+
+    /* 8. 載入與視窗縮放監聽 */
+    window.addEventListener('load', () => {
+      resizeCanvas();
+      spawnFlowers();
+    });
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+    });
+  </script>
+</body>
+</html>
